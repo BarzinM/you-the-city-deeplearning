@@ -1,0 +1,4 @@
+assignments/*.zip
+assignments/*.pickle
+assignments/*MNIST_*
+assignments/data
