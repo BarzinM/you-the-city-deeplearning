@@ -1,14 +1,7 @@
 import tensorflow as tf
 import numpy as np
 
-# open file
-# extract training and test
-# image to shape(-1,edge,edge,channels)
-# labels to one hots
-# define accuracy:
-# compare with onehots and average
-
-report_step = 1e4
+report_step = 100
 decay = .95
 initial_learning_rate = .5
 
@@ -16,14 +9,14 @@ initial_learning_rate = .5
 def generateGraph(batch_size, patch_size, depth_1, depth_2, number_of_hidden, number_of_hidden_2):
     image_size = 28
     num_channels = 1
-    num_classes = 10
+    num_classes = 5
     graph = tf.Graph()
     with graph.as_default():
         # placeholders for data
         data_flow = tf.placeholder(tf.float32, shape=(
-            batch_size, image_size, image_size, num_channels))
+            batch_size, image_size, 5*image_size, num_channels),name="data_flow_placeholder")
         label_flow = tf.placeholder(
-            tf.float32, shape=(batch_size, num_classes))
+            tf.float32, shape=(batch_size, num_classes),name="label_flow_placeholder")
 
         # dropout ratio
         keep_prob = tf.placeholder(tf.float32)
@@ -44,12 +37,12 @@ def generateGraph(batch_size, patch_size, depth_1, depth_2, number_of_hidden, nu
 
         new_image_size = image_size // 4
         weight_3 = tf.Variable(tf.truncated_normal(
-            [new_image_size**2 * depth_2, number_of_hidden]))
+            [5*new_image_size**2 * depth_2, number_of_hidden]))
         bias_3 = tf.Variable(tf.constant(.05, shape=[number_of_hidden]))
 
         weight_4 = tf.Variable(tf.truncated_normal(
-            [number_of_hidden, number_of_hidden_2]))
-        bias_4 = tf.Variable(tf.constant(.05, shape=[number_of_hidden_2]))
+            [number_of_hidden, num_classes]))
+        bias_4 = tf.Variable(tf.constant(.05, shape=[num_classes]))
 
         # constants for test dataset
         # variables for convolutional,bias,
@@ -94,20 +87,23 @@ def generateGraph(batch_size, patch_size, depth_1, depth_2, number_of_hidden, nu
             return data
 
         logits = generateLogit(data_flow)
-        loss = reduce_mean(
-            tf.nn.softmax_corss_entropy_with_logits(logits, label_flow))
+        loss = tf.reduce_mean(
+            tf.nn.softmax_cross_entropy_with_logits(logits, label_flow))
         optimizer = tf.train.GradientDescentOptimizer(
             learning_rate).minimize(loss, global_step=global_step)
 
         predicts = tf.nn.softmax(logits)
-        correct = tf.equal(tf.argmax(predicts, 1), tf.argmax(labels, 1))
+        correct = tf.equal(tf.argmax(predicts, 1), tf.argmax(label_flow, 1))
         performance = tf.reduce_sum(tf.cast(correct, "float"))
 
+        return (graph,batch_size,data_flow,label_flow,keep_prob,optimizer,loss,performance)
 
-def batchCorrects(data, labels):
+
+def batchCorrects(data, labels, model_pack):
+    graph,batch_size,data_flow,label_flow,keep_prob,optimizer,loss,performance=model_pack
     length = labels.shape[0]
     correctness = 0
-    for batch in range(0, length, batch_size):
+    for batch_start in range(0, length, batch_size):
         feed_dict = {data_flow: data[batch_start:(batch_start + batch_size)],
                      label_flow: labels[batch_start:(batch_start + batch_size)],
                      keep_prob: 1.0}  # batch data and batch labels and keep_prob
@@ -116,8 +112,8 @@ def batchCorrects(data, labels):
     return correctness
 
 
-def batchedAccuracy(data, labels):
-    correctness = batchCorrects(data, labels)
+def batchedAccuracy(data, labels, model_pack):
+    correctness = batchCorrects(data, labels, model_pack)
     accuracy = correctness / labels.shape[0]
     return accuracy * 100
 
@@ -131,11 +127,11 @@ def kFold(fold, data_file, labels_file, total_folds):
     labels = np.load(labels_file)
     data_size = labels.shape[0]
     gap_size = data_size / total_folds
-    valid_labels = labels[(fold * gap_size:(fold + 1) * gap_size)]
+    valid_labels = labels[(fold * gap_size):(fold + 1) * gap_size]
     labels = np.concatenate(
         [labels[0:fold * gap_size], labels[(fold + 1) * gap_size:]])
     data = np.load(data_file)
-    valid_data = data[(fold * gap_size:(fold + 1) * gap_size)]
+    valid_data = data[(fold * gap_size):(fold + 1) * gap_size]
     data = np.concatenate(
         [data[0:fold * gap_size], data[(fold + 1) * gap_size:]])
     return data, labels, valid_data, valid_labels
@@ -175,12 +171,12 @@ def foldTrain(num_steps):
               batchAccuracy(test_dataset, test_labels))
 
 
-def onlineTrain(num_steps, generator, validation_batches, test_batches):
-
+def onlineTrain(model_pack, num_steps, generator, validation_batches, test_batches):
+    graph,batch_size,data_flow,label_flow,keep_prob,optimizer,loss,performance=model_pack
     with tf.Session(graph=graph) as session:
         tf.initialize_all_variables().run()
 
-        for step in range(train_steps):
+        for step in range(num_steps):
             train_data, train_labels = generator(batch_size)
             feed_dict = {data_flow: train_data,
                          label_flow: train_labels,
@@ -189,16 +185,17 @@ def onlineTrain(num_steps, generator, validation_batches, test_batches):
                 [optimizer, loss], feed_dict=feed_dict)
 
             if step % report_step == 0:
+                print("loss",loss_return)
                 valid_accuracy = 0
                 for batch in range(0, validation_batches, batch_size):
                     valid_data, valid_labels = generator(batch_size)
-                    valid_accuracy += batchCorrects(valid_data, valid_labels)
-                valid_accuracy = valid_accuracy / validation_batches
+                    valid_accuracy += batchCorrects(valid_data, valid_labels,model_pack)
+                valid_accuracy = 100*valid_accuracy / validation_batches
                 print('Validation accuracy: %.1f%%' % valid_accuracy)
 
         test_accuracy = 0
-        for batch in range(0, validation_batches, batch_size):
+        for batch in range(0, test_batches, batch_size):
             valid_data, valid_labels = generator(batch_size)
-            test_accuracy += batchCorrects(valid_data, valid_labels)
-        test_accuracy = test_accuracy / validation_batches
+            test_accuracy += batchCorrects(valid_data, valid_labels,model_pack)
+        test_accuracy = 100*test_accuracy / test_batches
         print('Test accuracy: %.1f%%' % test_accuracy)
