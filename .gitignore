@@ -2,3 +2,7 @@ assignments/*.zip
 assignments/*.pickle
 assignments/*MNIST_*
 assignments/data
+capstone_project/*ubyte*
+capstone_project/sanitized
+**/.ipynb_checkpoints
+**/__pycached__
