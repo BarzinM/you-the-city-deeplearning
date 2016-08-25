@@ -3,8 +3,140 @@ import numpy as np
 
 report_step = 100
 decay = .95
-initial_learning_rate = .5
+initial_learning_rate = 10.
 
+class MnistTrainer(object):
+    def __init__(self):
+        pass
+
+    def makeGraph(self):
+        image_size = 28
+        num_channels = 1
+        num_classes = 5
+        graph = tf.Graph()
+        with graph.as_default():
+            # placeholders for data
+            data_flow = tf.placeholder(tf.float32, shape=(
+                batch_size, image_size, 5*image_size, num_channels),name="data_flow_placeholder")
+            label_flow = tf.placeholder(
+                tf.float32, shape=(batch_size, num_classes),name="label_flow_placeholder")
+
+            # dropout ratio
+            keep_prob = tf.placeholder(tf.float32)
+
+            # variables
+            # used for decaying the leraning rate
+            global_step = tf.Variable(0, trainable=False)
+            learning_rate = tf.train.exponential_decay(
+                initial_learning_rate, global_step, report_step, decay)
+
+            weight_1 = tf.Variable(tf.truncated_normal(
+                [patch_size, patch_size, num_channels, depth_1], stddev=0.1))
+            bias_1 = tf.Variable(tf.constant(.05, shape=[depth_1]))
+
+            weight_2 = tf.Variable(tf.truncated_normal(
+                [patch_size, patch_size, depth_1, depth_2], stddev=0.1))
+            bias_2 = tf.Variable(tf.constant(.05, shape=[depth_2]))
+
+            new_image_size = image_size // 4
+            weight_3 = tf.Variable(tf.truncated_normal(
+                [5*new_image_size**2 * depth_2, number_of_hidden], stddev=0.1))
+            bias_3 = tf.Variable(tf.constant(.05, shape=[number_of_hidden]))
+
+            weight_4 = tf.Variable(tf.truncated_normal(
+                [number_of_hidden, num_classes], stddev=0.1))
+            bias_4 = tf.Variable(tf.constant(.05, shape=[num_classes]))
+
+            # constants for test dataset
+            # variables for convolutional,bias,
+
+            def generateLogit(data):
+                # first convolutional
+                data = tf.nn.conv2d(data, weight_1, [1, 1, 1, 1], padding='SAME')
+                # max pool
+                data = tf.nn.max_pool(data, [1, 2, 2, 1], [
+                                      1, 2, 2, 1], padding='SAME')
+                # relu
+                data = tf.nn.relu(data + bias_1)
+                # droped
+                data = tf.nn.dropout(data, keep_prob)
+
+                # second convolutional
+                data = tf.nn.conv2d(data, weight_2, [1, 1, 1, 1], padding='SAME')
+                # max pool
+                data = tf.nn.max_pool(data, [1, 2, 2, 1], [
+                                      1, 2, 2, 1], padding='SAME')
+                # relu
+                data = tf.nn.relu(data + bias_2)
+                # droped
+                data = tf.nn.dropout(data, keep_prob)
+
+                # reshape to 2D [batch size, all features]
+                shape = data.get_shape().as_list()
+                data = tf.reshape(data, [-1, shape[1] * shape[2] * shape[3]])
+                # relu
+                data = tf.nn.relu(tf.matmul(data, weight_3) + bias_3)
+
+                # droped
+                data = tf.nn.dropout(data, keep_prob)
+                # relu
+                data = tf.nn.relu(tf.matmul(data, weight_4) + bias_4)
+
+                # # droped
+                # data = tf.nn.dropout(data, keep_prob)
+                # # logits
+                # data = tf.nn.relu(tf.matmul(data, weight_5) + bias_5)
+
+                return data
+
+            logits = generateLogit(data_flow)
+            loss = tf.reduce_mean(
+                tf.nn.softmax_cross_entropy_with_logits(logits, label_flow))
+            optimizer = tf.train.GradientDescentOptimizer(
+                learning_rate).minimize(loss, global_step=global_step)
+
+            predicts = tf.nn.softmax(logits)
+            correct = tf.equal(tf.argmax(predicts, 1), tf.argmax(label_flow, 1))
+            performance = tf.reduce_sum(tf.cast(correct, "float"))
+
+    def train(self):
+        with tf.Session(graph=graph) as session:
+            tf.initialize_all_variables().run()
+
+            for step in range(num_steps):
+                train_data, train_labels = generator(batch_size)
+                feed_dict = {data_flow: train_data,
+                             label_flow: train_labels,
+                             keep_prob: .7}
+                _, loss_return = session.run(
+                    [optimizer, loss], feed_dict=feed_dict)
+
+                if step % report_step == 0:
+                    print("loss",loss_return)
+                    valid_accuracy = 0
+                    for batch in range(0, validation_batches, batch_size):
+                        valid_data, valid_labels = generator(batch_size)
+                        valid_accuracy += batchCorrects(valid_data, valid_labels,model_pack)
+                    valid_accuracy = 100*valid_accuracy / validation_batches
+                    print('Validation accuracy: %.1f%%' % valid_accuracy)
+
+            test_accuracy = 0
+            for batch in range(0, test_batches, batch_size):
+                valid_data, valid_labels = generator(batch_size)
+                test_accuracy += batchCorrects(valid_data, valid_labels,model_pack)
+            test_accuracy = 100*test_accuracy / test_batches
+            print('Test accuracy: %.1f%%' % test_accuracy)
+
+    def batchCorrects(self):
+        length = labels.shape[0]
+        correctness = 0
+        for batch_start in range(0, length, batch_size):
+            feed_dict = {data_flow: data[batch_start:(batch_start + batch_size)],
+                         label_flow: labels[batch_start:(batch_start + batch_size)],
+                         keep_prob: 1.0}  # batch data and batch labels and keep_prob
+            correctness += performance.eval(feed_dict=feed_dict)
+
+        return correctness
 
 def generateGraph(batch_size, patch_size, depth_1, depth_2, number_of_hidden, number_of_hidden_2):
     image_size = 28
