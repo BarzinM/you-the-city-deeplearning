@@ -6,3 +6,7 @@ capstone_project/*ubyte*
 capstone_project/sanitized
 **/.ipynb_checkpoints
 **/__pycache__
+**/*.gz
+capstone_project/test
+capstone_project/train
+capstone_project/extra
