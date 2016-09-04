@@ -155,10 +155,7 @@ def parseMnistFile(file_name):
 
 # def seperateDataset(data, labels):
 #     """
-# Separates data based on labels into a dictionary. Each dictionary key is
-# one class and the value of that key is an array of all the data with the
-# same class.
-
+#     Separates data based on labels into a dictionary. Each dictionary key is one class and the value of that key is an array of all the data with the same class.
 #     Inputs:
 #     - data: an array of data.
 #     - labels: an array of labels corresponding to the data array.
@@ -232,9 +229,7 @@ def showMultipleArraysHorizontally(array, labels=None, max_per_row=10):
 
 # def rowNumbers(data, labels, number_of_digits):
 #     """
-# Returns an image in form of array that contains multiple digits from
-# MNIST dataset.
-
+#     Returns an image in form of array that contains multiple digits from MNIST dataset.
 #     Inputs:
 #     - number_of_digits: number of digits in the output image array.
 #     - data: TODO
@@ -309,13 +304,6 @@ if __name__ == "__main__":
     train_labels = getLabels('train/digitStruct.mat',[1,2,34])
     print(train_labels[0])
     print(train_labels[1])
-    # print(type(train_labels))
-    # print(len(train_labels),train_labels.keys())
-
-    # parse the downloaded files into data and labels
-    # count = 20  # TODO: remove in future
-    # test_data = parseMnistFile(test_data_file)[: count]
-    # test_labels = parseMnistFile(test_lable_file)[: count]
 
     # generate multi-digit numbers from digits in dataset
     # images, labels = fixedSizeMultipleNumberRows(
@@ -327,8 +315,3 @@ if __name__ == "__main__":
     # image = insertImageArray(images[0], np.zeros((500, 900)))
     # showMultipleArraysHorizontally([image], [labels[0]], 1)
 
-    # seperated_data = seperateDataset(test_data, test_labels)
-    # for key, value in seperated_data.items():
-    #     value = scaleData(value, 255)
-    #     maybePickle(value, 'sanitized/test_class_' + str(key))
-    # print(toOnehot(test_labels))
