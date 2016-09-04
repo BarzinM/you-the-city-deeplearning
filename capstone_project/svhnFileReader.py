@@ -1,5 +1,10 @@
 import os
 import numpy as np
+import cv2
+
+
+class SVHNParserError(Exception):
+    pass
 
 
 def decompress(file_name):
@@ -27,22 +32,24 @@ def download(URL):
     urllib.request.urlretrieve(URL, os.path.basename(URL))
 
 
-def maybeDownload(file_name):
+def maybeDownload(file_name, force=False):
     """
     Checks to see if a file from MNIST exists or not. if not, it is downloaded.
 
     Inputs:
     - file_name: name of the file.
     """
+    def addressExists(address):
+        return os.path.isfile(address) or os.path.isdir(address)
     # see if file exists
-    if os.path.isfile(file_name):
+    if addressExists(file_name) and not force:
         print(file_name, 'already exists')
         return  # if it exists then return.
 
     # see if the compressed version of the file (.gz extension) exists.
     compressed_file = file_name + '.tar.gz'
-    if os.path.isfile(compressed_file):
-        print('Found the compressed version. Decompressing ...')
+    if addressExists(compressed_file) and not force:
+        print('Found %s. Decompressing ...' % compressed_file, end=' ')
 
         # if exists then decompress it.
         decompress(compressed_file)
@@ -99,14 +106,55 @@ def getLabels(mat_file, indieces=None):
     elif type(indieces) is int:
         return getLabels(indieces)
 
-    elif type(indieces) is list:
+    elif type(indieces) in (list, np.ndarray):
         names_list = []
         labels_list = []
         for index in indieces:
-            name,labels = getLabels(index)
+            name, labels = getLabels(index)
             names_list.append(name)
             labels_list.append(labels)
         return names_list, labels_list
+    else:
+        raise SVHNParserError(
+            "The type of `indieces` argument should be `int` or `list`. The argument can also be left unassigned to parse all the files. The type received was %s." % type(indieces))
+
+def parseLabel(label, maximum_number_of_digits=2):
+    number_of_digits = len(label)
+    if number_of_digits>maximum_number_of_digits:
+        number_of_digits = 0.0
+    parsed = [float(number_of_digits)]+[0.0]*maximum_number_of_digits
+    parsed[1:len(label)+1]=label[:maximum_number_of_digits]
+    # for digit in range(len(label)):
+    #     parsed[digit+1] = label[digit]
+    return parsed
+
+def getImage(file_name, directory='./', shape=None):
+    def readImageFile(address):
+        im = cv2.imread(address)
+        return im
+    if type(file_name) is list:  # make sure if this  works for list of strings
+        if shape is None:
+            raise SVHNParserError(
+                "If `file_name` is a list of files, the `shape` argument should be assigned a 2 element array (eg. shape=(width, height)).")
+        number_of_images = len(file_name)
+        width, height = shape
+        data = np.empty([number_of_images, height, width, 3])
+        for i in range(number_of_images):
+            image = readImageFile(directory + file_name[i])
+            image_height,image_width=image.shape[:2]
+            if image_height<height and image_width<width:
+                position_0 = np.random.randint(height - image_height)
+                position_1 = np.random.randint(width - image_width)
+                data[i,position_0:image_height + position_0,
+                           position_1:image_width + position_1] = image
+            else:
+                data[i] = cv2.resize(image, (width, height))
+        return data
+    elif type(file_name) is str:
+        return readImageFile(directory + file_name)
+    else:
+        raise SVHNParserError(
+            "The argument `file_name` should be either a file name (`str`) or a list of file names (`list`). The type of the argument received was %s" % type(file_name))
 
 
 def toOnehot(array, num_classes=10):
@@ -155,10 +203,7 @@ def parseMnistFile(file_name):
 
 # def seperateDataset(data, labels):
 #     """
-# Separates data based on labels into a dictionary. Each dictionary key is
-# one class and the value of that key is an array of all the data with the
-# same class.
-
+#     Separates data based on labels into a dictionary. Each dictionary key is one class and the value of that key is an array of all the data with the same class.
 #     Inputs:
 #     - data: an array of data.
 #     - labels: an array of labels corresponding to the data array.
@@ -232,9 +277,7 @@ def showMultipleArraysHorizontally(array, labels=None, max_per_row=10):
 
 # def rowNumbers(data, labels, number_of_digits):
 #     """
-# Returns an image in form of array that contains multiple digits from
-# MNIST dataset.
-
+#     Returns an image in form of array that contains multiple digits from MNIST dataset.
 #     Inputs:
 #     - number_of_digits: number of digits in the output image array.
 #     - data: TODO
@@ -303,32 +346,28 @@ if __name__ == "__main__":
     files = ["train", "test", "extra"]
 
     # download mnist files
-    # for file in files:
-    #     maybeDownload(file)
+    for file in files:
+        maybeDownload(file)
 
-    train_labels = getLabels('train/digitStruct.mat',[1,2,34])
-    print(train_labels[0])
-    print(train_labels[1])
-    # print(type(train_labels))
-    # print(len(train_labels),train_labels.keys())
+    data_samples = np.random.randint(1, 400, size=20)
+    print(data_samples)
+    train_files, train_labels = getLabels(
+        'train/digitStruct.mat', data_samples)
+    print(train_files)
+    print(train_labels)
+    data = getImage(train_files, 'train/', shape=(100, 50))
+    print(data.shape)
+    print(parseLabel(train_labels[0]))
+    # showMultipleArraysHorizontally(data[:15], train_labels[:15], 3)
 
-    # parse the downloaded files into data and labels
-    # count = 20  # TODO: remove in future
-    # test_data = parseMnistFile(test_data_file)[: count]
-    # test_labels = parseMnistFile(test_lable_file)[: count]
 
+
+    
     # generate multi-digit numbers from digits in dataset
     # images, labels = fixedSizeMultipleNumberRows(
     #     test_data, test_labels, np.random.randint(1,4,size = 20), 4)
     # digit_length = np.random.randint(1, 4, size=20)
     # images, labels = multipleNumberRows(test_data, test_labels, digit_length)
-    # showMultipleArraysHorizontally(images[:5], labels[:5], 1)
 
     # image = insertImageArray(images[0], np.zeros((500, 900)))
     # showMultipleArraysHorizontally([image], [labels[0]], 1)
-
-    # seperated_data = seperateDataset(test_data, test_labels)
-    # for key, value in seperated_data.items():
-    #     value = scaleData(value, 255)
-    #     maybePickle(value, 'sanitized/test_class_' + str(key))
-    # print(toOnehot(test_labels))
