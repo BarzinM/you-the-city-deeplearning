@@ -67,7 +67,7 @@ def maybeDownload(file_name, force=False):
     print('Downloaded and decompressed', file_name)
 
 
-def getNumberOfFile(mat_file):
+def getNumberOfFiles(mat_file):
     import h5py
     f = h5py.File(mat_file, 'r')
     bbox_dataset = f["digitStruct"]["bbox"]
@@ -82,7 +82,7 @@ def getLabels(mat_file, indieces=None):
     bbox_dataset = f["digitStruct"]["bbox"]
     number_of_files = bbox_dataset.shape[0]
 
-    def getLabels(index):
+    def _getLabels(index):
         name = f[names_dataset[index][0]]
         file_name = ''.join(chr(x) for x in name)
         property_label = f[bbox_dataset[index][0]]["label"]
@@ -98,19 +98,19 @@ def getLabels(mat_file, indieces=None):
         names_list = []
         labels_list = []
         for index in range(number_of_files):
-            name, labels = getLabels(index)
+            name, labels = _getLabels(index)
             names_list.append(name)
             labels_list.append(labels)
         return names_list, labels_list
 
     elif type(indieces) is int:
-        return getLabels(indieces)
+        return _getLabels(indieces)
 
     elif type(indieces) in (list, np.ndarray):
         names_list = []
         labels_list = []
         for index in indieces:
-            name, labels = getLabels(index)
+            name, labels = _getLabels(index)
             names_list.append(name)
             labels_list.append(labels)
         return names_list, labels_list
@@ -128,7 +128,7 @@ def parseLabel(label, maximum_number_of_digits=2):
     #     parsed[digit+1] = label[digit]
     return parsed
 
-def getImage(file_name, directory='./', shape=None):
+def getImage(file_name, directory='.', shape=None):
     def readImageFile(address):
         im = cv2.imread(address)
         return im
@@ -140,7 +140,7 @@ def getImage(file_name, directory='./', shape=None):
         width, height = shape
         data = np.empty([number_of_images, height, width, 3])
         for i in range(number_of_images):
-            image = readImageFile(directory + file_name[i])
+            image = readImageFile(directory+ '/' + file_name[i])
             image_height,image_width=image.shape[:2]
             if image_height<height and image_width<width:
                 position_0 = np.random.randint(height - image_height)
@@ -151,7 +151,7 @@ def getImage(file_name, directory='./', shape=None):
                 data[i] = cv2.resize(image, (width, height))
         return data
     elif type(file_name) is str:
-        return readImageFile(directory + file_name)
+        return readImageFile(directory+ '/' + file_name)
     else:
         raise SVHNParserError(
             "The argument `file_name` should be either a file name (`str`) or a list of file names (`list`). The type of the argument received was %s" % type(file_name))
@@ -263,14 +263,14 @@ def showMultipleArraysHorizontally(array, labels=None, max_per_row=10):
     # from matplotlib.pyplot import matshow
     import matplotlib.pyplot as plt
     fig = figure()
-    number_of_images = len(array)
+    number_of_images = array.shape[0]
     rows = np.ceil(number_of_images / max_per_row)
     columns = min(number_of_images, max_per_row)
     for i in range(number_of_images):
         ax = fig.add_subplot(rows, columns, i + 1)
         if labels is not None:
             ax.set_title(labels[i])
-        plt.imshow(array[i], cmap=plt.get_cmap('gray'))
+        plt.imshow(array[i])
         axis('off')
     plt.show()
 

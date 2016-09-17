@@ -7,6 +7,7 @@ capstone_project/sanitized
 **/.ipynb_checkpoints
 **/__pycache__
 **/*.gz
+**/*_preprocessed
 capstone_project/test
 capstone_project/train
 capstone_project/extra
