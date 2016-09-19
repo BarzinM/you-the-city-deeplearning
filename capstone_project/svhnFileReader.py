@@ -118,40 +118,59 @@ def getLabels(mat_file, indieces=None):
         raise SVHNParserError(
             "The type of `indieces` argument should be `int` or `list`. The argument can also be left unassigned to parse all the files. The type received was %s." % type(indieces))
 
-def parseLabel(label, maximum_number_of_digits=2):
-    number_of_digits = len(label)
-    if number_of_digits>maximum_number_of_digits:
-        number_of_digits = 0.0
-    parsed = [float(number_of_digits)]+[0.0]*maximum_number_of_digits
-    parsed[1:len(label)+1]=label[:maximum_number_of_digits]
-    # for digit in range(len(label)):
-    #     parsed[digit+1] = label[digit]
-    return parsed
+def shuffleArrays(list_of_arrays):
+    indx = np.random.permutation(len(list_of_arrays[0]))
+    return [array[indx] for array in list_of_arrays]
+
+def parseLabels(labels, maximum_number_of_digits):
+    number_of_labels = len(labels)
+    parsed_labels = np.zeros(
+        [number_of_labels, maximum_number_of_digits + 1], int)
+    for i in range(number_of_labels):
+        number_of_digits = len(labels[i])
+        parsed_labels[i] = [number_of_digits] + labels[i][:maximum_number_of_digits] + [
+            0.0] * (maximum_number_of_digits - number_of_digits)
+        if number_of_digits > maximum_number_of_digits:
+            parsed_labels[i, 0] = 0.0
+
+    return parsed_labels
+
+# def parseLabel(label, maximum_number_of_digits):
+#     number_of_digits = len(label)
+#     if number_of_digits>maximum_number_of_digits:
+#         number_of_digits = 0.0
+#     parsed = [float(number_of_digits)]+[0.0]*maximum_number_of_digits
+#     parsed[1:len(label)+1]=label[:maximum_number_of_digits]
+#     return parsed
+
 
 def getImage(file_name, directory='.', shape=None):
     def readImageFile(address):
         im = cv2.imread(address)
         return im
+
     if type(file_name) is list:  # make sure if this  works for list of strings
         if shape is None:
             raise SVHNParserError(
                 "If `file_name` is a list of files, the `shape` argument should be assigned a 2 element array (eg. shape=(width, height)).")
         number_of_images = len(file_name)
         width, height = shape
-        data = np.empty([number_of_images, height, width, 3])
+        # image_array = np.zeros([number_of_images, height, width, 3])
+        image_array = np.random.rand(number_of_images, height, width, 3)*255
+
         for i in range(number_of_images):
-            image = readImageFile(directory+ '/' + file_name[i])
-            image_height,image_width=image.shape[:2]
-            if image_height<height and image_width<width:
+            image = readImageFile(directory + '/' + file_name[i])
+            image_height, image_width = image.shape[:2]
+            if image_height < height and image_width < width:
                 position_0 = np.random.randint(height - image_height)
                 position_1 = np.random.randint(width - image_width)
-                data[i,position_0:image_height + position_0,
-                           position_1:image_width + position_1] = image
+                image_array[i, position_0:image_height + position_0,
+                     position_1:image_width + position_1,:] = image
             else:
-                data[i] = cv2.resize(image, (width, height))
-        return data
+                image_array[i] = cv2.resize(image, (width, height))
+        return image_array
     elif type(file_name) is str:
-        return readImageFile(directory+ '/' + file_name)
+        return readImageFile(directory + '/' + file_name)
     else:
         raise SVHNParserError(
             "The argument `file_name` should be either a file name (`str`) or a list of file names (`list`). The type of the argument received was %s" % type(file_name))
@@ -173,32 +192,44 @@ def toOnehot(array, num_classes=10):
     onehot_array[np.arange(count), array] = 1
     return onehot_array
 
+def multipleOneHots(array, class_sizes):
+    number_of_classes = len(class_sizes)
+    array_shape = array.shape
+    assert array_shape[1] == number_of_classes
+    onehots = np.zeros((array_shape[0],sum(class_sizes)))
+    offset = 0
+    for i in range(number_of_classes):
+        ind = array[:,i]
+        onehots[np.arange(array_shape[0]),offset+ind]=1
+        offset+=class_sizes[i]
+    return onehots
 
-def parseMnistFile(file_name):
-    """
-    Gets a file_name belonging to MNIST. If the file contains labels then the function returns an 1D array of labels. If the file contains images then a 3D array is returned with the size of [number of images, 28, 28]. For more informatin: http://yann.lecun.com/exdb/mnist/
 
-    Inputs:
-    - file_name: name of the file including the extension (e.g. 't10k-labels-idx1-ubyte.gz').
-    """
+# def parseMnistFile(file_name):
+#     """
+#     Gets a file_name belonging to MNIST. If the file contains labels then the function returns an 1D array of labels. If the file contains images then a 3D array is returned with the size of [number of images, 28, 28]. For more informatin: http://yann.lecun.com/exdb/mnist/
 
-    with open(file_name, 'rb') as file:
-        magic_number, count = np.fromfile(file, dtype='>u4', count=2)
-        if magic_number == 2049:
-            print(file_name, 'is a lable file')
-            array = np.fromfile(file, dtype=np.uint8)
-            if len(array) != count:
-                raise ValueError
-        if magic_number == 2051:
-            print(file_name, 'is a data file')
-            num_rows, num_columns = np.fromfile(file, dtype='>u4', count=2)
-            if num_rows != 28 or num_columns != 28:
-                raise ValueError
-            array = np.fromfile(file, dtype=np.uint8).astype(float)
-            if len(array) != count * 28 * 28:
-                raise ValueError
-            array = array.reshape((count, 28, 28))
-        return array
+#     Inputs:
+#     - file_name: name of the file including the extension (e.g. 't10k-labels-idx1-ubyte.gz').
+#     """
+
+#     with open(file_name, 'rb') as file:
+#         magic_number, count = np.fromfile(file, dtype='>u4', count=2)
+#         if magic_number == 2049:
+#             print(file_name, 'is a lable file')
+#             array = np.fromfile(file, dtype=np.uint8)
+#             if len(array) != count:
+#                 raise ValueError
+#         if magic_number == 2051:
+#             print(file_name, 'is a data file')
+#             num_rows, num_columns = np.fromfile(file, dtype='>u4', count=2)
+#             if num_rows != 28 or num_columns != 28:
+#                 raise ValueError
+#             array = np.fromfile(file, dtype=np.uint8).astype(float)
+#             if len(array) != count * 28 * 28:
+#                 raise ValueError
+#             array = array.reshape((count, 28, 28))
+#         return array
 
 
 # def seperateDataset(data, labels):
@@ -257,13 +288,9 @@ def showMultipleArraysHorizontally(array, labels=None, max_per_row=10):
     - labels: a 1 dimensional array with the length of number of images in which each element is the label of corresponding image in input `array`.
     - max_per_row: maximum number of images in each row before going to the next row.
     """
-    from matplotlib.pyplot import figure, imshow, axis
-    # from matplotlib.image import imread
-    # from random import sample
-    # from matplotlib.pyplot import matshow
     import matplotlib.pyplot as plt
-    fig = figure()
-    number_of_images = array.shape[0]
+    fig = plt.figure()
+    number_of_images = len(array)
     rows = np.ceil(number_of_images / max_per_row)
     columns = min(number_of_images, max_per_row)
     for i in range(number_of_images):
@@ -271,7 +298,7 @@ def showMultipleArraysHorizontally(array, labels=None, max_per_row=10):
         if labels is not None:
             ax.set_title(labels[i])
         plt.imshow(array[i])
-        axis('off')
+        plt.axis('off')
     plt.show()
 
 
@@ -360,9 +387,6 @@ if __name__ == "__main__":
     print(parseLabel(train_labels[0]))
     # showMultipleArraysHorizontally(data[:15], train_labels[:15], 3)
 
-
-
-    
     # generate multi-digit numbers from digits in dataset
     # images, labels = fixedSizeMultipleNumberRows(
     #     test_data, test_labels, np.random.randint(1,4,size = 20), 4)
