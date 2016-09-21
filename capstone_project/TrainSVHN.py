@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+from time import time, strftime
 
 
 class SVHNTrainer(object):
@@ -12,14 +13,42 @@ class SVHNTrainer(object):
         self.num_labels = 6 + 10 * 5
         self.image_height = 50
         self.image_width = 100
+        self.depth_1 = 12
+        self.depth_2 = 32
+        self.hidden = 300
+
         self.class_sizes = None
+        self.report_string = '-' * 10
         self.graph = tf.Graph()
 
+    def report(self, *args):
+        text = [str(arg) for arg in args]
+        text = " ".join(text)
+        self.report_string += "\n" + text
+        print(text)
+
+    def saveReport(self):
+        file_name = "model_report_" + strftime("%Y-%m-%d_%H:%M:%S")
+
+        text = "=" * 10
+        text += "\n" + file_name
+        text += "\nInit learing rate: " + str(self.initial_learning_rate)
+        text += "\nDecay ratio: " + str(self.decay)
+        text += "\nDecay step: " + str(self.report_step)
+        text += "\nBatch size: " + str(self.batch_size)
+        text += "\nDepth 1: " + str(self.depth_1)
+        text += "\nDepth 2: " + str(self.depth_2)
+        text += "\nHidden: " + str(self.hidden)
+
+        text += "\n"
+        text += self.report_string
+
+        with open(file_name, "w+") as file_handle:
+            file_handle.write(text)
+        print("Saved to:", file_name)
+
     def makeGraph(self):
-        patch_size = 8
-        depth_1 = 12
-        depth_2 = 32
-        number_of_hidden = 300
+        patch_size = 5
         with self.graph.as_default():
             # placeholders for data
             self.data_flow = tf.placeholder(tf.float32, shape=(
@@ -37,21 +66,21 @@ class SVHNTrainer(object):
                 self.initial_learning_rate, global_step, self.report_step, self.decay)
 
             weight_1 = tf.Variable(tf.truncated_normal(
-                [patch_size, patch_size, self.num_channels, depth_1], stddev=0.1))
-            bias_1 = tf.Variable(tf.constant(.05, shape=[depth_1]))
+                [patch_size, patch_size, self.num_channels, self.depth_1], stddev=0.1))
+            bias_1 = tf.Variable(tf.constant(.05, shape=[self.depth_1]))
 
             weight_2 = tf.Variable(tf.truncated_normal(
-                [patch_size, patch_size, depth_1, depth_2], stddev=0.1))
-            bias_2 = tf.Variable(tf.constant(.05, shape=[depth_2]))
+                [patch_size, patch_size, self.depth_1, self.depth_2], stddev=0.1))
+            bias_2 = tf.Variable(tf.constant(.05, shape=[self.depth_2]))
 
             new_image_height = self.image_height // 4
             new_image_width = self.image_width // 4
             weight_3 = tf.Variable(tf.truncated_normal(
-                [new_image_height * new_image_width * depth_2, number_of_hidden], stddev=0.1))
-            bias_3 = tf.Variable(tf.constant(.05, shape=[number_of_hidden]))
+                [new_image_height * new_image_width * self.depth_2, self.hidden], stddev=0.1))
+            bias_3 = tf.Variable(tf.constant(.05, shape=[self.hidden]))
 
             weight_4 = tf.Variable(tf.truncated_normal(
-                [number_of_hidden, self.num_labels], stddev=0.1))
+                [self.hidden, self.num_labels], stddev=0.1))
             bias_4 = tf.Variable(tf.constant(.05, shape=[self.num_labels]))
 
             # constants for test dataset
@@ -72,7 +101,7 @@ class SVHNTrainer(object):
                     data, weight_2, [1, 1, 1, 1], padding='SAME')
                 # max pool
                 data = tf.nn.max_pool(data, [1, 2, 2, 1], [
-                1, 2, 2, 1], padding='SAME')
+                    1, 2, 2, 1], padding='SAME')
                 # relu
                 data = tf.nn.relu(data + bias_2)
 
@@ -170,7 +199,7 @@ class SVHNTrainer(object):
                     [self.optimizer, self.loss], feed_dict=feed_dict)
 
                 if step % self.report_step == 0:
-                    print("self.loss", loss_return)
+                    self.report("self.loss", loss_return)
                     detailed_eval = np.zeros((len(self.class_sizes)))
                     for batch in range(0, validation_batches):
                         valid_data, valid_labels = next(generator)
@@ -181,7 +210,7 @@ class SVHNTrainer(object):
 
                     detailed_eval = 100 * detailed_eval / \
                         (self.batch_size * validation_batches)
-                    print('Validation accuracy', detailed_eval)
+                    self.report('Validation accuracy', detailed_eval)
 
             detailed_eval = np.zeros((len(self.class_sizes)))
             for batch in range(0, test_batches):
@@ -193,7 +222,7 @@ class SVHNTrainer(object):
 
             detailed_eval = 100 * detailed_eval / \
                 (self.batch_size * test_batches)
-            print('Test accuracy:', detailed_eval)
+            self.report('Test accuracy:', detailed_eval)
 
             feed_dict = {self.data_flow: test_data,
                          self.label_flow: test_labels,

@@ -1,0 +1,32 @@
+==========
+Init learing rate: 0.001
+Decay ratio: 0.9
+Decay step: 1000
+Batch size: 8
+Depth 1: 12
+Depth 2: 32
+Hidden: 300
+----------
+self.loss 15.5186
+Validation accuracy [ 41.25   6.25  11.25   7.5   10.  ]
+self.loss 6.79129
+Validation accuracy [ 51.25  15.    22.5   75.    98.75]
+self.loss 7.67373
+Validation accuracy [ 58.75  38.75  22.5   80.    95.  ]
+self.loss 5.80273
+Validation accuracy [ 56.25  25.    18.75  77.5   93.75]
+self.loss 6.26034
+Validation accuracy [ 53.75  35.    13.75  67.5   93.75]
+self.loss 6.96462
+Validation accuracy [  51.25   28.75   20.     71.25  100.  ]
+self.loss 6.90306
+Validation accuracy [ 48.75  30.    16.25  70.    97.5 ]
+self.loss 7.77455
+Validation accuracy [ 60.    21.25  21.25  80.    97.5 ]
+self.loss 6.6016
+Validation accuracy [ 53.75  25.    18.75  68.75  93.75]
+self.loss 6.77762
+Validation accuracy [ 61.25  25.     7.5   63.75  98.75]
+self.loss 8.27574
+Validation accuracy [ 57.5   30.    21.25  72.5   95.  ]
+Test accuracy: [ 59.     28.25   14.125  70.75   95.5  ]
