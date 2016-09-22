@@ -1,28 +1,23 @@
 import tensorflow as tf
 import numpy as np
-from time import strftime, time, localtime
-
-
-def product(num_list):
-    prod = 1
-    for number in num_list:
-        prod *= number
-    return prod
+from time import strftime
 
 
 class SVHNTrainer(object):
     def __init__(self):
-        self.report_step = None
+        self.report_step = 100
         self.decay = .95
-        self.initial_learning_rate = None
-        self.batch_size = None
-        self.num_channels = None
-        self.output_neurons = None
-        self.image_height = None
-        self.image_width = None
-        self.depth_conv = None
-        self.depth_fully_connected = None
-        self.max_pool_strides = None
+        self.initial_learning_rate = 1e-4
+        self.batch_size = 8
+        self.num_channels = 3
+        self.output_neurons = 6 + 10 * 5
+        self.image_height = 50
+        self.image_width = 100
+        self.depth_1 = 12
+        self.depth_2 = 32
+        self.hidden = 300
+        self.depth_conv = [1]
+        self.depth_fully_connected = [1]
 
         self.class_sizes = None
         self.report_string = '-' * 10
@@ -43,8 +38,9 @@ class SVHNTrainer(object):
         text += "\nDecay ratio: " + str(self.decay)
         text += "\nDecay step: " + str(self.report_step)
         text += "\nBatch size: " + str(self.batch_size)
-        text += "\nDepth conv: " + str(self.depth_conv)
-        text += "\nDepth fully connected: " + str(self.depth_fully_connected)
+        text += "\nDepth 1: " + str(self.depth_1)
+        text += "\nDepth 2: " + str(self.depth_2)
+        text += "\nHidden: " + str(self.hidden)
 
         text += "\n"
         text += self.report_string
@@ -54,15 +50,13 @@ class SVHNTrainer(object):
         print("Saved to:", file_name)
 
     def makeGraph(self):
-
-        print(vars(self))
         patch_size = 5
 
         def makeWeightAndBias(shape):
-            weight = tf.Variable(tf.truncated_normal(shape, stddev=.1))
-            bias = tf.Variable(tf.constant(.05, shape=[shape[-1]]))
+            weight = tf.Variable(tf.truncated_normal(shape, stddev = .1))
+            bias = tf.Variable(tf.constant(.05,shape=[shape[-1]]))
             return weight, bias
-
+        
         with self.graph.as_default():
 
             # placeholders for data
@@ -83,65 +77,97 @@ class SVHNTrainer(object):
             weights_conv = []
             biases_conv = []
             number_of_conv_layers = len(self.depth_conv)
-            self.depth_conv = [self.num_channels] + self.depth_conv
-            print("Weights of convolution layers have the following sizes:")
+            self.depth_conv = [self.num_channels]+self.depth_conv
             for i in range(number_of_conv_layers):
-                weight, bias = makeWeightAndBias(
-                    [patch_size, patch_size, self.depth_conv[i], self.depth_conv[i + 1]])
-                print(weight.get_shape(), "maxpool stride:",
-                      self.max_pool_strides[i])
+                weight, bias = makeWeightAndBias([patch_size, patch_size, self.depth_conv[i], self.depth_conv[i+1]])
                 weights_conv.append(weight)
                 biases_conv.append(bias)
 
+
+
             # defining fully connected weights and biases
-            new_image_height = self.image_height // product(
-                self.max_pool_strides)
-            new_image_width = self.image_width // product(
-                self.max_pool_strides)
+            new_image_height = self.image_height // (2**number_of_conv_layers)
+            new_image_width = self.image_width // (2**number_of_conv_layers)
             weights_fully_connected = []
             biases_fully_connected = []
             number_of_fully_connected_layers = len(self.depth_fully_connected)
-            self.depth_fully_connected = [
-                new_image_height * new_image_width * self.depth_conv[-1]] + self.depth_fully_connected
-            for i in range(number_of_fully_connected_layers):
-                weight, bias = makeWeightAndBias(
-                    [self.depth_fully_connected[i], self.depth_fully_connected[i + 1]])
+            self.depth_fully_connected = [new_image_height*new_image_width*self.depth_conv[-1]]+self.depth_fully_connected
+            for i in range(number_of_fully_connected_layers)
+                weight,bias = makeWeightAndBias([self.depth_fully_connected[i],self.depth_fully_connected[i+1]])
                 weights_fully_connected.append(weight)
                 biases_fully_connected.append(bias)
 
-            last_weight, last_bias = makeWeightAndBias(
-                [self.depth_fully_connected[-1], self.output_neurons])
+            last_weight,last_bias = makeWeightAndBias([self.depth_fully_connected[-1], self.output_neurons])
+
+            # weight_3 = tf.Variable(tf.truncated_normal(
+            #     [new_image_height * new_image_width * self.depth_2, self.hidden], stddev=0.1))
+            # bias_3 = tf.Variable(tf.constant(.05, shape=[self.hidden]))
+
+            # weight_4 = tf.Variable(tf.truncated_normal(
+            #     [self.hidden, self.output_neurons], stddev=0.1))
+            # bias_4 = tf.Variable(tf.constant(.05, shape=[self.output_neurons]))
+
+            # constants for test dataset
+            # variables for convolutional,bias,
 
             def generateLogit(data):
                 # convolutional layer operations
-                print('Data has the following shapes between convolutional layers:')
-                for weight, bias, stride in zip(weights_conv, biases_conv, self.max_pool_strides):
-                    print(data.get_shape())
-                    data = tf.nn.conv2d(
-                        data, weight, [1, 1, 1, 1], padding='SAME')
-                    data = tf.nn.max_pool(data, [1, 2, 2, 1], [
-                                          1, stride, stride, 1], padding='SAME')
+                for weight,bias in zip(weights_conv, biases_conv):
+                    data = tf.nn.conv2d(data,weight,[1,1,1,1],padding='SAME')
+                    data = tf.nn.max_pool(data,[1,2,2,1],[1,2,2,1],padding='SAME')
                     # data = tf.nn.dropout(data, self.keep_prob)
-                    data = tf.nn.relu(data + bias)
+                    data = tf.nn.relu(data+bias)
 
                 # rehape operation to connect convolutional to flat layers
                 shape = data.get_shape().as_list()
-                data = tf.reshape(
-                    data, [self.batch_size, shape[1] * shape[2] * shape[3]])
-                print('Data\'s shape before flat layers is:', data.get_shape())
-
+                data = tf.reshape(data,[self.batch_size,shape[1]*shape[2]*shape[3]])
+                
                 # fully connected layers operations
-                print('Data has following shapes between flat layers:')
-                for weight, bias in zip(weights_fully_connected, biases_fully_connected):
-                    data = tf.nn.relu(tf.matmul(data, weight) + bias)
+                for weight,bias in zip(weights_fully_connected,biases_fully_connected):
+                    data = tf.nn.relu(tf.matmul(data,weight)+bias)
                     data = tf.nn.dropout(data, self.keep_prob)
-                    print(data.get_shape())
 
                 # output operations
-                data = tf.nn.relu(tf.matmul(data, last_weight) + last_bias)
-                print("Final shape of data is:", data.get_shape())
+                data = tf.nn.relu(tf.matmul(data,last_weight)+last_bias)
 
                 return data
+                # first convolutional
+                # data = tf.nn.conv2d(
+                #     data, weight_1, [1, 1, 1, 1], padding='SAME')
+                # # max pool
+                # data = tf.nn.max_pool(data, [1, 2, 2, 1], [
+                #                       1, 2, 2, 1], padding='SAME')
+                # # relu
+                # data = tf.nn.relu(data + bias_1)
+
+                # # second convolutional
+                # data = tf.nn.conv2d(
+                #     data, weight_2, [1, 1, 1, 1], padding='SAME')
+                # # max pool
+                # data = tf.nn.max_pool(data, [1, 2, 2, 1], [
+                #     1, 2, 2, 1], padding='SAME')
+                # # relu
+                # data = tf.nn.relu(data + bias_2)
+
+                # # reshape to 2D [batch size, all features]
+                # shape = data.get_shape().as_list()
+                # data = tf.reshape(
+                #     data, [self.batch_size, shape[1] * shape[2] * shape[3]])
+                # # relu
+                # data = tf.nn.relu(tf.matmul(data, weight_3) + bias_3)
+
+                # # droped
+                # data = tf.nn.dropout(data, self.keep_prob)
+                # # relu
+                # data = tf.nn.relu(tf.matmul(data, weight_4) + bias_4)
+
+                # # # droped
+                # # data = tf.nn.dropout(data, keep_prob)
+                # # # logits
+                # # data = tf.nn.relu(tf.matmul(data, weight_5) + bias_5)
+
+                # print("logit shape is", data.get_shape().as_list())
+                # return data
 
             self.logits = generateLogit(self.data_flow)
 
@@ -159,16 +185,15 @@ class SVHNTrainer(object):
             print("Seperated shapes are", [
                   label.get_shape().as_list() for label in seperated_labels])
 
-            # i = tf.constant(0, tf.int64)
+            # i = tf.constant(0)
             # condition = lambda i,l: tf.less(i,l)
-            # variables = [i,tf.argmax(seperated_labels[0],1)]
+            # variables = [i,tf.argmax(seperated_labels[0])]
             # loss = tf.constant(0.0)
             # def operation(i,l):
-            #     logit = seperated_logits[i]
-            #     label = seperated_labels[i]
+            #     logit = logits_list[i]
+            #     label = labels_list[i]
             #     loss+=tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logit,label))
             # tf.while_loop(condition,operation,variables)
-            # self.loss = loss
 
             def multiLabelLoss(logits_list, labels_list):
                 loss = tf.constant(0.0)
@@ -208,8 +233,18 @@ class SVHNTrainer(object):
         with tf.Session(graph=self.graph) as session:
             tf.initialize_all_variables().run()
 
-            start_time = time()
-            for step in range(1, training_steps + 1):
+            # detailed_eval = np.zeros((len(self.class_sizes)))
+            # no_train_steps = 100
+            # for batch in range(0, no_train_steps):
+            #     test_data, test_labels = next(generator)
+            #     feed_dict = {self.data_flow: test_data,
+            #                  self.label_flow: test_labels,
+            #                  self.keep_prob: 1.0}  # batch data and batch labels and self.keep_prob
+            #     detailed_eval += self.performance.eval(feed_dict)
+            # detailed_eval = 100*detailed_eval/(no_train_steps*self.batch_size)
+            # print("Without training:", detailed_eval)
+
+            for step in range(training_steps + 1):
                 train_data, train_labels = next(generator)
                 feed_dict = {self.data_flow: train_data,
                              self.label_flow: train_labels,
@@ -218,7 +253,6 @@ class SVHNTrainer(object):
                     [self.optimizer, self.loss], feed_dict=feed_dict)
 
                 if step % self.report_step == 0:
-                    current_time = time()
                     self.report("self.loss", loss_return)
                     detailed_eval = np.zeros((len(self.class_sizes)))
                     for batch in range(0, validation_steps):
@@ -231,9 +265,6 @@ class SVHNTrainer(object):
                     detailed_eval = 100 * detailed_eval / \
                         (self.batch_size * validation_steps)
                     self.report('Validation accuracy', detailed_eval)
-                    elapsed_time = current_time - start_time
-                    print("Next report at:", strftime(
-                        "%H:%M:%S", localtime(current_time + elapsed_time)))
 
             detailed_eval = np.zeros((len(self.class_sizes)))
             for batch in range(0, test_steps):
