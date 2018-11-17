@@ -23,8 +23,8 @@ class SVHNTrainer(object):
         self.depth_conv = None
         self.depth_fully_connected = None
         self.max_pool_strides = None
+        self.label_sizes = [5]
 
-        self.class_sizes = None
         self.report_string = '-' * 10
         self.graph = tf.Graph()
 
@@ -68,8 +68,11 @@ class SVHNTrainer(object):
             # placeholders for data
             self.data_flow = tf.placeholder(tf.float32, shape=(
                 self.batch_size, self.image_height, self.image_width, self.num_channels), name="data_flow_placeholder")
-            self.label_flow = tf.placeholder(
-                tf.float32, shape=(self.batch_size, self.output_neurons), name="label_flow_placeholder")
+            self.label_flow2 = [tf.placeholder(tf.float, shape=(
+                self.batch_size, 1)) for _ in range(len(self.label_sizes))]
+            # self.label_flow = tf.placeholder(
+            # tf.float32, shape=(self.batch_size, self.output_neurons),
+            # name="label_flow_placeholder")
 
             # dropout ratio
             self.keep_prob = tf.placeholder(tf.float32)
@@ -109,8 +112,16 @@ class SVHNTrainer(object):
                 weights_fully_connected.append(weight)
                 biases_fully_connected.append(bias)
 
-            last_weight, last_bias = makeWeightAndBias(
-                [self.depth_fully_connected[-1], self.output_neurons])
+            # configuring the output layer
+            last_weights = []
+            last_biases = []
+            for label_size in self.label_sizes:
+                weight, bias = makeWeightAndBias(
+                    [self.depth_fully_connected[-1], label_size])
+                last_weights.append(weight)
+                last_biases.appnd(bias)
+            # last_weight, last_bias = makeWeightAndBias(
+            #     [self.depth_fully_connected[-1], self.output_neurons])
 
             def generateLogit(data):
                 # convolutional layer operations
@@ -138,26 +149,31 @@ class SVHNTrainer(object):
                     print(data.get_shape())
 
                 # output operations
-                data = tf.nn.relu(tf.matmul(data, last_weight) + last_bias)
-                print("Final shape of data is:", data.get_shape())
+                output = []
+                print("Final shape of data is:", end=' ')
+                for weight, bias in zip(last_weights, last_biases):
+                    label = tf.nn.relu(tf.matmul(data, weight) + bias)
+                    output.append(label)
+                    print(label.get_shape(), end=' ')
+                print()
 
-                return data
+                return output
 
             self.logits = generateLogit(self.data_flow)
 
-            def splitColumns(tensor, sizes):
-                start = 0
-                sliced_tensors = []
-                for size in sizes:
-                    sliced_tensors.append(
-                        tf.slice(tensor, [0, start], [self.batch_size, size]))
-                    start += size
-                return sliced_tensors
+            # def splitColumns(tensor, sizes):
+            #     start = 0
+            #     sliced_tensors = []
+            #     for size in sizes:
+            #         sliced_tensors.append(
+            #             tf.slice(tensor, [0, start], [self.batch_size, size]))
+            #         start += size
+            #     return sliced_tensors
 
-            seperated_logits = splitColumns(self.logits, self.class_sizes)
-            seperated_labels = splitColumns(self.label_flow, self.class_sizes)
-            print("Seperated shapes are", [
-                  label.get_shape().as_list() for label in seperated_labels])
+            # seperated_logits = splitColumns(self.logits, self.class_sizes)
+            # seperated_labels = splitColumns(self.label_flow, self.class_sizes)
+            # print("Seperated shapes are", [
+            #       label.get_shape().as_list() for label in seperated_labels])
 
             # i = tf.constant(0, tf.int64)
             # condition = lambda i,l: tf.less(i,l)
@@ -170,16 +186,18 @@ class SVHNTrainer(object):
             # tf.while_loop(condition,operation,variables)
             # self.loss = loss
 
-            def multiLabelLoss(logits_list, labels_list):
-                loss = tf.constant(0.0)
-                for i in range(len(logits_list)):
-                    logit = logits_list[i]
-                    label = labels_list[i]
-                    loss += tf.reduce_mean(
-                        tf.nn.softmax_cross_entropy_with_logits(logit, label))
-                return loss
+            self.loss = tf.nn.sparse_softmax_cross_entropy_with_logits(self.logits[0], self.label_flow2[0])
 
-            self.loss = multiLabelLoss(seperated_logits, seperated_labels)
+            # def multiLabelLoss(logits_list, labels_list):
+            #     loss = tf.constant(0.0)
+            #     for i in range(len(logits_list)):
+            #         logit = logits_list[i]
+            #         label = labels_list[i]
+            #         loss += tf.reduce_mean(
+            #             tf.nns.sparse_softmax_cross_entropy_with_logits(logit, label))
+            #     return loss
+
+            # self.loss = multiLabelLoss(seperated_logits, seperated_labels)
             # print("loss shape is",loss.get_shape())
 
             # self.loss = tf.reduce_mean(
@@ -189,10 +207,10 @@ class SVHNTrainer(object):
                 learning_rate).minimize(self.loss, global_step=global_step)
 
             performance = []
-            for class_ in range(len(self.class_sizes)):
-                predicts = tf.nn.softmax(seperated_logits[class_])
+            for label in range(len(self.label_sizes[0])):
+                predicts = tf.nn.softmax(seperated_logits[label])
                 correct = tf.equal(tf.argmax(predicts, 1),
-                                   tf.argmax(seperated_labels[class_], 1))
+                                   tf.argmax(seperated_labels[label], 1))
                 performance.append(tf.reduce_sum(
                     tf.cast(correct, "float"), keep_dims=True))
             self.performance = tf.concat(0, performance)
@@ -210,17 +228,23 @@ class SVHNTrainer(object):
 
             start_time = time()
             for step in range(1, training_steps + 1):
+
                 train_data, train_labels = next(generator)
-                feed_dict = {self.data_flow: train_data,
-                             self.label_flow: train_labels,
-                             self.keep_prob: .7}
+
+                feed_dict = {i: d for i, d in zip(
+                    self.label_flow2, train_labels)}
+                feed_dict[self.data_flow] = train_data
+                feed_dict[self.keep_prob] = .7
+                # feed_dict = {self.data_flow: train_data,
+                #              self.label_flow: train_labels,
+                #              self.keep_prob: .7}
                 _, loss_return = session.run(
                     [self.optimizer, self.loss], feed_dict=feed_dict)
 
                 if step % self.report_step == 0:
-                    elapsed_time = time() - start_time
+                    current_time = time()
                     self.report("self.loss", loss_return)
-                    detailed_eval = np.zeros((len(self.class_sizes)))
+                    detailed_eval = np.zeros((len(self.label_sizes)))
                     for batch in range(0, validation_steps):
                         valid_data, valid_labels = next(generator)
                         feed_dict = {self.data_flow: valid_data,
@@ -231,11 +255,11 @@ class SVHNTrainer(object):
                     detailed_eval = 100 * detailed_eval / \
                         (self.batch_size * validation_steps)
                     self.report('Validation accuracy', detailed_eval)
+                    elapsed_time = current_time - start_time
                     print("Next report at:", strftime(
-                        "%H:%M:%S", localtime(time() + elapsed_time)))
-                    start_time = time()
+                        "%H:%M:%S", localtime(current_time + elapsed_time)))
 
-            detailed_eval = np.zeros((len(self.class_sizes)))
+            detailed_eval = np.zeros((len(self.label_sizes)))
             for batch in range(0, test_steps):
                 test_data, test_labels = next(generator)
                 feed_dict = {self.data_flow: test_data,
@@ -264,4 +288,4 @@ class SVHNTrainer(object):
             for performance in self.performance:
                 correctness += performance.eval(feed_dict)
 
-        return correctness / len(self.class_sizes)
+        return correctness / len(self.label_sizes)
